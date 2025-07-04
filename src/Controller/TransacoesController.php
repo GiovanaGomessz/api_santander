@@ -2,55 +2,124 @@
 
 namespace App\Controller;
 
-use App\Dto\UsuarioContaDto;
-use App\Dto\UsuarioDto;
-use App\Dto\TransacoesDto;
-use App\Entity\Conta;
-use App\Entity\Usuario;
-use App\Repository\ContaRepository;
-use App\Repository\UsuarioRepository;
-use App\Repository\TransacaoRepository;
-use Doctrine\ORM\EntityManagerInterface;
+
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
+use App\Dto\TransacoesRealizarDto;
+use App\Repository\ContaRepository;
+use App\Entity\Transacao;
+use DateTime;
+use Doctrine\ORM\EntityManagerInterface;
 
 #[Route('/api')]
 final class TransacoesController extends AbstractController
 {
-    #[Route('/usuarios', name: 'usuarios_transacoes', methods:['POST'])]
-    public function criar(
+    #[Route('/transacoes', name: 'transacoes_realizar', methods: ['POST'])]
+    public function realizar(
         #[MapRequestPayload(acceptFormat: 'json')]
-        TransacoesDto $transacoesDto,
+        TransacoesRealizarDto $entrada,
 
-        EntityManagerInterface $entityManager,
-        TransacaoRepository $transacaoRepository
-    ): JsonResponse
+        ContaRepository $contaRepository,
+        EntityManagerInterface $entityManager
+    ): Response
     {
+        // 1. validar o DTO de entrada
         $erros = [];
-        if(!$transacoesDto->getId_conta_origem()){
+        if(!$entrada->getIdContaOrigem()){
             array_push($erros, [
-                'message' => 'Conta não encontrada'
+                'message' => 'Insira uma conta de origem válida!'
             ]);
         }
 
-        if(!$transacoesDto->getId_conta_destino()){
+        if(!$entrada->getIdContaDestino()){
             array_push($erros, [
-                'message' => 'Conta não encontrada'
+                'message' => 'Insira uma conta de destino válida!'
             ]);
         }
 
-        if(!$transacoesDto->getValor()< 1){
+        if(!$entrada->getValor()){
             array_push($erros, [
-                'message' => 'Digite um valor válido!'
+                'message' => 'Valor é obrigatório!'
             ]);
         }
+        
+        if(!$entrada->getValor() || $entrada->getValor() <= 0){
+            array_push($erros, [
+                'message' => 'Valor tem que ser maior que zero!'
+            ]);
+        }
+
+        // 2. validar se as contas são iguais 
+        if(!$entrada->getIdContaOrigem() === $entrada->getIdContaDestino()){
+            array_push($erros, [
+                'message' => 'As contas devem ser distintas!'
+            ]);
+        }
+
+        // 3. validar se as contas existem
+        //dd($entrada);
+        $contaOrigem= $contaRepository->findByUsuarioId($entrada->getIdContaOrigem());
+        if(!$contaOrigem){
+            return $this->json([
+                'message' => 'Conta de origem não encontrada!'
+            ], 404);
+        }
+
+        $contaDestino = $contaRepository->findByUsuarioId($entrada->getIdContaDestino());
+        if(!$contaDestino){
+            return $this->json([
+                'message' => 'Conta de destino não encontrada!'
+            ], 404);
+        }
+
+        
+        //4.validar se a origem tem saldo suficiente
+        if ((float) $contaOrigem->getSaldo() < (float) $entrada->getValor()){
+            return $this->json([
+                'menssage' => 'Saldo insuficiente!'
+            ]);
+        }
+
+        //5.realizar a transação e salvar no banco 
+        $saldo = (int) $contaOrigem->getSaldo();
+        $valor = (float) $entrada->getValor();
+        $saldoDestino = (float) $contaDestino->getSaldo();
+
+        $contaOrigem->setSaldo( $saldo - $valor);
+        $entityManager->persist(($contaOrigem));
+
+        $contaDestino->setSaldo($valor + $saldoDestino);
+        $entityManager->persist(($contaDestino));
+
+        $transacao = new Transacao();
+        $transacao->setDataHora(new DateTime());
+        $transacao->setValor($entrada->getValor());
+        $transacao->setContaOrigem($contaOrigem);
+        $transacao->setContaDestino($contaDestino);
+        $entityManager->persist($transacao);
+
+        $entityManager->flush();
+         
+
+        return $this->json([
+            'message' => 'Transação realizada com sucesso!',
+        ], 204);
+
+        //para retornar vazio use     ------>      /*return new Response(status: 204);*/
+
 
         if(count($erros)> 0){
-            return$this->json($erros, 422);
+            return $this->json($erros, 422);
         }
 
-        return null
+
+        dd((float) $entrada->getValor());
+
+        return $this->json([
+            'message' => 'Welcome to your new controller!',
+            'path' => 'src/Controller/TransacoesController.php',
+        ]);
     }
 }
