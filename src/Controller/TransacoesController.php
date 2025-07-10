@@ -107,7 +107,7 @@ final class TransacoesController extends AbstractController
             'message' => 'Transação realizada com sucesso!',
         ], 204);
 
-        //para retornar vazio use     ------>      /*return new Response(status: 204);*/
+        //DICA: caso precise retornar vazio use     ------>      /*return new Response(status: 204);*/
 
 
         if(count($erros)> 0){
