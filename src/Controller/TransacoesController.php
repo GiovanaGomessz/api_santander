@@ -2,7 +2,8 @@
 
 namespace App\Controller;
 
-
+use App\Dto\ContaDto;
+use App\Dto\TransacoesExtratoDto;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
@@ -10,8 +11,10 @@ use Symfony\Component\Routing\Attribute\Route;
 use App\Dto\TransacoesRealizarDto;
 use App\Repository\ContaRepository;
 use App\Entity\Transacao;
+use App\Repository\TransacaoRepository;
 use DateTime;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\JsonResponse;
 
 #[Route('/api')]
 final class TransacoesController extends AbstractController
@@ -121,5 +124,97 @@ final class TransacoesController extends AbstractController
             'message' => 'Welcome to your new controller!',
             'path' => 'src/Controller/TransacoesController.php',
         ]);
+    }
+
+    /*
+    Entrada:
+        idUsuario = quem deseja ver o seu extrato
+
+    Processamento:
+        validar se o usuário existe
+
+        buscar as transações
+
+        montar a saída
+
+        --extrato conforme a saida--
+
+    Saída:
+    [
+        { "id": 1,
+            "valor": "199,90",
+            "dataHora": "2025-07-04 00:11:33",
+            "tipo": "", //RECEBEU / ENVIOU
+            "origem": {
+                "id": "",
+                "cpf": "",
+                "nome": "",
+                "numeroConta": "",
+            },
+            "destino": {
+                "id": "",
+                "cpf": "",
+                "nome": "",
+                "numeroConta": "",
+            },
+        }
+    ]
+    */
+
+    #[Route('/transacoes/{idUsuario}/extrato', name: 'tranasacoes_extrato', methods:['GET'])]
+    public function gerarExtrato(
+        int $idUsuario,
+        ContaRepository $contaRepository,
+        TransacaoRepository $transacaoRepository
+    ): JsonResponse {
+        $conta = $contaRepository->findByUsuarioId($idUsuario);
+        if (!$conta){
+            return$this->json([
+                'menssage' => 'Usuário não encontrado!'
+            ], 404);
+        }
+
+        $transacoes =  $transacaoRepository->findByContaOrigemAndContaDestino($conta->getId());
+
+        $saida = [];
+        foreach ($transacoes as $transacao){
+            //getter e setter
+
+            $transacaoDto = new TransacoesExtratoDto();
+            $transacaoDto->setId($transacao->getId());
+            $transacaoDto->setValor($transacao->getValor());            
+            $transacaoDto->setDataHora($transacao->getDataHora());       
+            if ($conta->getUsuario()->getId() === $transacao->getContaOrigem()->getId()){
+                $transacaoDto->setTipo('ENVIOU');
+            } else if ($conta->getId() === $transacao->getContaDestino()->getId()) {
+                $transacaoDto->setTipo('RECEBEU');
+            };
+            
+            //origem
+            $origem = $transacao->getContaOrigem();
+            $contaOrigemDto = new ContaDto();  
+
+            $contaOrigemDto->setId($origem->getUsuario()->getId());
+            $contaOrigemDto->setNome($origem->getUsuario()->getNome());
+            $contaOrigemDto->setCpf($origem->getUsuario()->getCpf());
+            $contaOrigemDto->setNomeConta($origem->getUsuario()->getNome());
+
+            $transacaoDto->setOrigem(($contaOrigemDto));
+
+            //destino
+            $destino= $transacao->getContaDestino();
+            $contaDestinoDto = new ContaDto();  
+
+            $contaDestinoDto->setId($destino->getUsuario()->getId());
+            $contaDestinoDto->setNome($destino->getUsuario()->getNome());
+            $contaDestinoDto->setCpf($destino->getUsuario()->getCpf());
+            $contaDestinoDto->setNomeConta($destino->getUsuario()->getNome());
+
+            $transacaoDto->setDestino(($contaDestinoDto));
+
+            array_push($saida, $transacaoDto);
+        }
+
+        return $this->json($saida);
     }
 }
