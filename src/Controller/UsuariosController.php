@@ -2,15 +2,18 @@
 
 namespace App\Controller;
 
+
 use App\Dto\UsuarioContaDto;
 use App\Dto\UsuarioDto;
 use App\Entity\Conta;
 use App\Entity\Usuario;
+use App\Filter\UsuarioContaFilter;
 use App\Repository\ContaRepository;
 use App\Repository\UsuarioRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Attribute\MapQueryString;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -132,5 +135,18 @@ final class UsuariosController extends AbstractController
         return $this->json($usuarioContaDto);
 
 
+    }
+
+    #[Route('/usuarios', name: 'usuarios_buscar_filtro', methods: ['GET'])]
+    public function buscarPorFiltro(
+        #[MapQueryString()]
+        UsuarioContaFilter $filter,
+
+        ContaRepository $contaRepository
+    ): JsonResponse{
+        $filtro = $filter->getPesquisa();
+        $contas = $contaRepository->findByFiltro($filtro);
+
+        return $this->json($contas);
     }
 }
